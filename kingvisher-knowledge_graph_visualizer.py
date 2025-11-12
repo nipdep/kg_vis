@@ -96,7 +96,26 @@ PREFIXES = {
     "bNode": "nodeID://", # blank nodes in Virtuoso
     "annotation": "urn:qanary:annotation:", # Qanary annotation
     "question-text-local": "http://localhost:8080/question/stored-question__text_", # Qanary question text
-    "question-text": "http://demos.swe.htwk-leipzig.de:40111/question/stored-question__text_" # Qanary question text
+    "question-text": "http://demos.swe.htwk-leipzig.de:40111/question/stored-question__text_", # Qanary question text
+    "deo": "http://purl.org/spar/deo/",
+    "dc": "http://purl.org/dc/elements/1.1/",
+    "cito": "http://purl.org/spar/cito/",
+    "idea":  "http://www.semanticweb.org/idea/",
+    "doco":  "http://purl.org/spar/doco/",
+    "po":    "http://purl.org/spar/po/",
+    "cso":   "http://cso.kmi.open.ac.uk/schema/cso#",
+    "fabio": "http://purl.com/spar/fabio/",
+    "foaf":  "http://xmlns.com/foaf/0.1/",
+    "amo":   "http://purl.org/spar/amo/",
+    "c4o":   "http://purl.org/spar/c4o/",
+    "cso":   "http://cso.kmi.open.ac.uk/schema/cso#",
+    "xml":   "http://www.w3.org/XML/1998/namespace",
+    "bibo":  "http://purl.org/ontology/bibo/",
+    "expo":  "http://www.hozo.jp/owl/EXPOApr19.xml/",
+    "skos":  "http://www.w3.org/2004/02/skos/core#",
+    "prism": "http://prismstandard.org/namespaces/1.2/basic/",
+    "semsur": "http://purl.org/semsur/"
+
 }
 
 width = 60
@@ -248,27 +267,43 @@ def execute_start_resource_query_convert(sparql_endpoint, graph, all_start_value
         
         # select all ingoing and outgoing resources of the start resources
         query_string = """
-            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-            PREFIX dbr: <http://dbpedia.org/resource/>
-            PREFIX dbo: <http://dbpedia.org/ontology/>
+            PREFIX deo: <http://purl.org/spar/deo/>
+            PREFIX dc: <http://purl.org/dc/elements/1.1/>
+            PREFIX cito: <http://purl.org/spar/cito/>
+            PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+            PREFIX idea:  <http://www.semanticweb.org/idea/>
+            PREFIX doco:  <http://purl.org/spar/doco/>
+            PREFIX po:    <http://purl.org/spar/po/>
+            PREFIX cso:   <http://cso.kmi.open.ac.uk/schema/cso#>
+            PREFIX fabio: <http://purl.com/spar/fabio/>
+            PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+            PREFIX amo: <http://purl.org/spar/amo/> 
+            PREFIX c4o: <http://purl.org/spar/c4o/>
+            PREFIX cso: <http://cso.kmi.open.ac.uk/schema/cso#>
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX xml: <http://www.w3.org/XML/1998/namespace>
+            PREFIX bibo: <http://purl.org/ontology/bibo/>
+            PREFIX expo: <http://www.hozo.jp/owl/EXPOApr19.xml/>
+            PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+            PREFIX prism: <http://prismstandard.org/namespaces/1.2/basic/>
+            PREFIX semsur: <http://purl.org/semsur/>
             
             SELECT ?s ?p ?o ?direction WHERE {
-                %s {
-                        %s
-                        %s
+                    %s
+                    %s
                     
                     # define allowed types of p
                     %s 
                     
                     # define blocked types of p
                     %s
-                }
             } 
             # LIMIT applied later
             # order results randomly
             ORDER BY RAND()
-        """ % (get_graph_expression(graph), query_string_ingoing, query_string_outgoing, p_values, p_blocked_values)
+        """ % (query_string_ingoing, query_string_outgoing, p_values, p_blocked_values)
         #print("execute_start_resource_query_convert:", count, "/", len(start_values_chunks), query_string)
         
         all_queries += query_string
@@ -306,23 +341,39 @@ def get_data(sparql_endpoint, number_of_results, allowed_properties, blocked_pro
     # simple query to get all resources if no start resources are given
     if len(start_resources) == 0:
         query_string = """
-            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-            PREFIX dbr: <http://dbpedia.org/resource/>
-            PREFIX dbo: <http://dbpedia.org/ontology/>
+            PREFIX deo: <http://purl.org/spar/deo/>
+            PREFIX dc: <http://purl.org/dc/elements/1.1/>
+            PREFIX cito: <http://purl.org/spar/cito/>
+            PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+            PREFIX idea:  <http://www.semanticweb.org/idea/>
+            PREFIX doco:  <http://purl.org/spar/doco/>
+            PREFIX po:    <http://purl.org/spar/po/>
+            PREFIX cso:   <http://cso.kmi.open.ac.uk/schema/cso#>
+            PREFIX fabio: <http://purl.com/spar/fabio/>
+            PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+            PREFIX amo: <http://purl.org/spar/amo/> 
+            PREFIX c4o: <http://purl.org/spar/c4o/>
+            PREFIX cso: <http://cso.kmi.open.ac.uk/schema/cso#>
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX xml: <http://www.w3.org/XML/1998/namespace>
+            PREFIX bibo: <http://purl.org/ontology/bibo/>
+            PREFIX expo: <http://www.hozo.jp/owl/EXPOApr19.xml/>
+            PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+            PREFIX prism: <http://prismstandard.org/namespaces/1.2/basic/>
+            PREFIX semsur: <http://purl.org/semsur/>
             
             SELECT ?s ?p ?o 
             WHERE {
-                %s {
                     ?s ?p ?o .
                     # define allowed types of p
                     %s 
                     # define blocked types of p
                     %s
-                }
             } 
             LIMIT %d
-        """ % (get_graph_expression(graph), p_values, p_blocked_values, number_of_results)
+        """ % (p_values, p_blocked_values, number_of_results)
         
         with st.spinner('Wait for it...'):
             with st.expander("SPARQL query (LIMIT %d)" % (number_of_results,), expanded=False):
@@ -393,9 +444,28 @@ def get_data(sparql_endpoint, number_of_results, allowed_properties, blocked_pro
 def get_resources(sparql_endpoint, max):
         
         query_string = """
-            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-            PREFIX dbr: <http://dbpedia.org/resource/>
+            PREFIX deo: <http://purl.org/spar/deo/>
+            PREFIX dc: <http://purl.org/dc/elements/1.1/>
+            PREFIX cito: <http://purl.org/spar/cito/>
+            PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+            PREFIX idea:  <http://www.semanticweb.org/idea/>
+            PREFIX doco:  <http://purl.org/spar/doco/>
+            PREFIX po:    <http://purl.org/spar/po/>
+            PREFIX cso:   <http://cso.kmi.open.ac.uk/schema/cso#>
+            PREFIX fabio: <http://purl.com/spar/fabio/>
+            PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+            PREFIX amo: <http://purl.org/spar/amo/> 
+            PREFIX c4o: <http://purl.org/spar/c4o/>
+            PREFIX cso: <http://cso.kmi.open.ac.uk/schema/cso#>
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX xml: <http://www.w3.org/XML/1998/namespace>
+            PREFIX bibo: <http://purl.org/ontology/bibo/>
+            PREFIX expo: <http://www.hozo.jp/owl/EXPOApr19.xml/>
+            PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+            PREFIX prism: <http://prismstandard.org/namespaces/1.2/basic/>
+            PREFIX semsur: <http://purl.org/semsur/>
             
             SELECT DISTINCT ?s WHERE {
                 ?s ?p ?o .
@@ -438,21 +508,36 @@ def get_all_properties(sparql_endpoint, graph=None):
     while True:
         # will not work with more with properties that are not defined in the ontology, like rdf:type
         query_string = """
-            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>   
-            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-            PREFIX dbr: <http://dbpedia.org/resource/>
-            PREFIX dbo: <http://dbpedia.org/ontology/>
+            PREFIX deo: <http://purl.org/spar/deo/>
+            PREFIX dc: <http://purl.org/dc/elements/1.1/>
+            PREFIX cito: <http://purl.org/spar/cito/>
+            PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+            PREFIX idea:  <http://www.semanticweb.org/idea/>
+            PREFIX doco:  <http://purl.org/spar/doco/>
+            PREFIX po:    <http://purl.org/spar/po/>
+            PREFIX cso:   <http://cso.kmi.open.ac.uk/schema/cso#>
+            PREFIX fabio: <http://purl.com/spar/fabio/>
+            PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+            PREFIX amo: <http://purl.org/spar/amo/> 
+            PREFIX c4o: <http://purl.org/spar/c4o/>
+            PREFIX cso: <http://cso.kmi.open.ac.uk/schema/cso#>
             PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX xml: <http://www.w3.org/XML/1998/namespace>
+            PREFIX bibo: <http://purl.org/ontology/bibo/>
+            PREFIX expo: <http://www.hozo.jp/owl/EXPOApr19.xml/>
+            PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+            PREFIX prism: <http://prismstandard.org/namespaces/1.2/basic/>
+            PREFIX semsur: <http://purl.org/semsur/>
             
             SELECT DISTINCT ?property WHERE {
-                %s {
                     ?property rdf:type ?type .
                     VALUES ?type { rdf:Property owl:DatatypeProperty }
-                }
             } 
             LIMIT 10000
             OFFSET %d
-        """ % (graph_expression, page * 10000,)
+        """ % (page * 10000,)
         results = execute_query_convert(sparql_endpoint, query_string)
         
         if len(results) == 0:
@@ -465,17 +550,32 @@ def get_all_properties(sparql_endpoint, graph=None):
     # ask N times for properties that are not defined in the ontology, like rdf:type
     for i in range(2):
         query_string = """
-            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-            PREFIX dbr: <http://dbpedia.org/resource/>
-            PREFIX dbo: <http://dbpedia.org/ontology/>
+            PREFIX deo: <http://purl.org/spar/deo/>
+            PREFIX dc: <http://purl.org/dc/elements/1.1/>
+            PREFIX cito: <http://purl.org/spar/cito/>
+            PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+            PREFIX idea:  <http://www.semanticweb.org/idea/>
+            PREFIX doco:  <http://purl.org/spar/doco/>
+            PREFIX po:    <http://purl.org/spar/po/>
+            PREFIX cso:   <http://cso.kmi.open.ac.uk/schema/cso#>
+            PREFIX fabio: <http://purl.com/spar/fabio/>
+            PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+            PREFIX amo: <http://purl.org/spar/amo/> 
+            PREFIX c4o: <http://purl.org/spar/c4o/>
+            PREFIX cso: <http://cso.kmi.open.ac.uk/schema/cso#>
             PREFIX owl: <http://www.w3.org/2002/07/owl#>
-            PREFIX yago: <http://dbpedia.org/class/yago/>
+            PREFIX xml: <http://www.w3.org/XML/1998/namespace>
+            PREFIX bibo: <http://purl.org/ontology/bibo/>
+            PREFIX expo: <http://www.hozo.jp/owl/EXPOApr19.xml/>
+            PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+            PREFIX prism: <http://prismstandard.org/namespaces/1.2/basic/>
+            PREFIX semsur: <http://purl.org/semsur/>
             
-            SELECT DISTINCT ?property WHERE {
-                GRAPH ?g {
+            SELECT DISTINCT ?property 
+            WHERE {
                     ?s ?property ?o .
-                }
             }
             LIMIT 10000
         """
@@ -507,26 +607,62 @@ def get_resource_data(sparql_endpoint, uri, graph):
     
     if sparql_endpoint == WIKIDATA_ENDPOINT:
         query_string = """
-            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns>
-            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-            PREFIX dbr: <http://dbpedia.org/resource/>
+            PREFIX deo: <http://purl.org/spar/deo/>
+            PREFIX dc: <http://purl.org/dc/elements/1.1/>
+            PREFIX cito: <http://purl.org/spar/cito/>
+            PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+            PREFIX idea:  <http://www.semanticweb.org/idea/>
+            PREFIX doco:  <http://purl.org/spar/doco/>
+            PREFIX po:    <http://purl.org/spar/po/>
+            PREFIX cso:   <http://cso.kmi.open.ac.uk/schema/cso#>
+            PREFIX fabio: <http://purl.com/spar/fabio/>
+            PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+            PREFIX amo: <http://purl.org/spar/amo/> 
+            PREFIX c4o: <http://purl.org/spar/c4o/>
+            PREFIX cso: <http://cso.kmi.open.ac.uk/schema/cso#>
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX xml: <http://www.w3.org/XML/1998/namespace>
+            PREFIX bibo: <http://purl.org/ontology/bibo/>
+            PREFIX expo: <http://www.hozo.jp/owl/EXPOApr19.xml/>
+            PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+            PREFIX prism: <http://prismstandard.org/namespaces/1.2/basic/>
+            PREFIX semsur: <http://purl.org/semsur/>
             
             SELECT DISTINCT ?p ?p_label ?o
             WHERE {
-                %s {
                     <%s> ?p ?o .
                     FILTER(!isLiteral(?o) || lang(?o) = "" || langMatches(lang(?o), "EN"))
                     BIND(?p AS ?p_label)
-                }
             }
             ORDER BY LCASE(?p_label)
-        """ % (graph_expession, uri)
+        """ % (uri)
         
     else:
         query_string = """
-            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns>
-            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-            PREFIX dbr: <http://dbpedia.org/resource/>
+            PREFIX deo: <http://purl.org/spar/deo/>
+            PREFIX dc: <http://purl.org/dc/elements/1.1/>
+            PREFIX cito: <http://purl.org/spar/cito/>
+            PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+            PREFIX idea:  <http://www.semanticweb.org/idea/>
+            PREFIX doco:  <http://purl.org/spar/doco/>
+            PREFIX po:    <http://purl.org/spar/po/>
+            PREFIX cso:   <http://cso.kmi.open.ac.uk/schema/cso#>
+            PREFIX fabio: <http://purl.com/spar/fabio/>
+            PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+            PREFIX amo: <http://purl.org/spar/amo/> 
+            PREFIX c4o: <http://purl.org/spar/c4o/>
+            PREFIX cso: <http://cso.kmi.open.ac.uk/schema/cso#>
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX xml: <http://www.w3.org/XML/1998/namespace>
+            PREFIX bibo: <http://purl.org/ontology/bibo/>
+            PREFIX expo: <http://www.hozo.jp/owl/EXPOApr19.xml/>
+            PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+            PREFIX prism: <http://prismstandard.org/namespaces/1.2/basic/>
+            PREFIX semsur: <http://purl.org/semsur/>
             
             SELECT DISTINCT *
             WHERE {
@@ -617,9 +753,7 @@ def get_labels(sparql_endpoint, results, show_resource_labels):
                     SELECT ?s ?p (?sLabel AS ?o)
                     WHERE {
                         SELECT ?s ?p ?sLabel
-                        WHERE 
-                        {
-                            GRAPH ?g {
+                        WHERE{
                                 BIND(?res AS ?s)
                                 BIND(<http://www.w3.org/2000/01/rdf-schema#label> AS ?p)
                                 BIND(?sLabel AS ?o)
@@ -631,25 +765,42 @@ def get_labels(sparql_endpoint, results, show_resource_labels):
                                     #?prop wikibase:directClaim ?s .
                                 }
                             }
-                        }
                     }
                 """ % (" ".join(["<%s>" % x for x in resources_chunk]))
                 
             else:
                 query_string = """
                     # get labels the standard way
-                    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-                    PREFIX dbr: <http://dbpedia.org/resource/>
-                    PREFIX dbo: <http://dbpedia.org/ontology/>
-                    
-                    SELECT ?s ?p ?o WHERE {
-                        GRAPH ?g {
+                    PREFIX deo: <http://purl.org/spar/deo/>
+                    PREFIX dc: <http://purl.org/dc/elements/1.1/>
+                    PREFIX cito: <http://purl.org/spar/cito/>
+                    PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+                    PREFIX idea:  <http://www.semanticweb.org/idea/>
+                    PREFIX doco:  <http://purl.org/spar/doco/>
+                    PREFIX po:    <http://purl.org/spar/po/>
+                    PREFIX cso:   <http://cso.kmi.open.ac.uk/schema/cso#>
+                    PREFIX fabio: <http://purl.com/spar/fabio/>
+                    PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+                    PREFIX rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+                    PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+                    PREFIX amo: <http://purl.org/spar/amo/> 
+                    PREFIX c4o: <http://purl.org/spar/c4o/>
+                    PREFIX cso: <http://cso.kmi.open.ac.uk/schema/cso#>
+                    PREFIX owl: <http://www.w3.org/2002/07/owl#>
+                    PREFIX xml: <http://www.w3.org/XML/1998/namespace>
+                    PREFIX bibo: <http://purl.org/ontology/bibo/>
+                    PREFIX expo: <http://www.hozo.jp/owl/EXPOApr19.xml/>
+                    PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+                    PREFIX prism: <http://prismstandard.org/namespaces/1.2/basic/>
+                    PREFIX semsur: <http://purl.org/semsur/>
+
+                    SELECT ?s ?p ?o 
+                    WHERE {
                             ?s ?p ?o .
                             VALUES ?s { %s }
                             VALUES ?p { rdfs:label }
                             FILTER ( LANG(?o) = "en" )
-                        }
-                    }
+w                    }
                 """ % (" ".join(["<%s>" % x for x in resources_chunk]))
 
             results += execute_query_convert(sparql_endpoint, query_string)
