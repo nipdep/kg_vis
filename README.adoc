@@ -86,3 +86,19 @@ As this tool is published under the {github-repository}/blob/main/LICENSE[MIT li
 
 This tool just temporarily stores the image data. 
 This tool is provided "as is" and without any warranty, express or implied.
+
+
+---
+Enable QEMU emulation on your host
+
+You can install and register QEMU emulation support for cross-architecture builds.
+
+docker run --privileged --rm tonistiigi/binfmt --install all
+
+
+Then retry your build:
+
+docker buildx build --platform linux/amd64 -t kg_vis:latest .
+
+
+✅ This lets your ARM host execute amd64 containers for building.
