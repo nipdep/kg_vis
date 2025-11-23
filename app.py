@@ -12,7 +12,10 @@ from ui.work_viewer import (
 )
 from core.work_graph import (
     get_all_works,
-    get_work_local_graph
+    get_work_local_graph,
+    get_top_keywords,
+    get_work_citations,
+    get_section_hierarchy
 )
 from core.resource_inspector import get_resource_properties
 from core.query_builder import replace_prefixes_if_uri
@@ -30,9 +33,31 @@ sparql_endpoint = IDEA_ENDPOINT
 # SIDEBAR SEARCH (restored)
 # -----------------------------------------------------------
 st.sidebar.header("Search Papers")
-
 search_title, search_venue, search_year = sidebar_controls(IDEA_ENDPOINT)
 
+st.sidebar.markdown("---")
+st.sidebar.subheader("Keyword cloud")
+
+try:
+    top_keywords = get_top_keywords(sparql_endpoint, limit=30)
+except Exception:
+    top_keywords = []
+
+if top_keywords:
+    # simple inline "cloud"
+    kw_chunks = []
+    for kw in top_keywords:
+        uri = kw["uri"]
+        label = replace_prefixes_if_uri(uri)
+        # strip idea:/cso: prefixes visually
+        for prefix in ("idea:", "cso:"):
+            if label.startswith(prefix):
+                label = label[len(prefix):]
+        label = label.replace("_", " ")
+        kw_chunks.append(f"`{label}`")
+    st.sidebar.markdown(" ".join(kw_chunks))
+else:
+    st.sidebar.caption("No keywords found (or query failed).")
 
 # -----------------------------------------------------------
 # SESSION STATE — selected work
@@ -48,6 +73,7 @@ st.markdown("## All Publications")
 
 # Load all works
 works = get_all_works(sparql_endpoint)
+citations = get_work_citations(sparql_endpoint)
 
 # Apply search filtering
 def passes_filters(w):
@@ -67,11 +93,10 @@ filtered_works = [w for w in works if passes_filters(w)]
 st.caption(f"{len(filtered_works)} works found")
 
 # build overview graph
-clicked_work = build_work_overview_graph(filtered_works)
+clicked_work = build_work_overview_graph(filtered_works, citations=citations)
 
 if clicked_work:
     st.session_state["selected_work"] = clicked_work
-
 
 selected_work = st.session_state["selected_work"]
 
@@ -87,11 +112,13 @@ if selected_work:
     )
 
     # toggles
-    col1, col2 = st.columns([1, 1])
+    col1, col2, col3 = st.columns([1, 1, 1])
     with col1:
         show_structure = st.toggle("Show Structure", value=True)
     with col2:
         show_argument = st.toggle("Show Argument", value=True)
+    with col3:
+        show_metadata = st.toggle("Show Metadata", value=True)
 
     # pull graph from SPARQL
     work_rows = get_work_local_graph(
@@ -104,16 +131,40 @@ if selected_work:
         work_rows,
         work_uri=selected_work,
         show_structure=show_structure,
-        show_argument=show_argument
+        show_argument=show_argument,
+        show_metadata=show_metadata
     )
 
     # -------------------------------------------------------
     # DETAILS
     # -------------------------------------------------------
+    # -----------------------
+    # Section hierarchy
+    # -----------------------
+    st.markdown("### Section hierarchy")
+
+    try:
+        sections = get_section_hierarchy(sparql_endpoint, selected_work)
+    except Exception:
+        sections = []
+
+    if sections:
+        for s in sections:
+            t_label = (
+                s["type_label"]
+                or replace_prefixes_if_uri(s["type"] or "deo:Section")
+            )
+            st.markdown(f"- **{t_label}**  \n  `{s['uri']}`")
+    else:
+        st.caption("No sections found for this work (or query failed).")
+
+    # -----------------------
+    # Node details (table)
+    # -----------------------
+    st.markdown("---")
     st.markdown("### Node Details")
 
     target_uri = clicked_node or selected_work
-
     st.write(f"**Selected Node:** `{replace_prefixes_if_uri(target_uri)}`")
 
     rows = get_resource_properties(sparql_endpoint, target_uri)

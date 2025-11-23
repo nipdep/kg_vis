@@ -1,10 +1,33 @@
+from typing import List, Dict
 
 from core.sparql_client import sparql
 from core.query_builder import build_query
 
-from config.settings import FABIO_NS, RDF_TYPE, STRUCTURE_PREFIXES, ARGUMENT_PREFIXES
-from core.sparql_client import execute_query_convert
+from config.settings import ARGUMENT_PREFIXES, STRUCTURE_PREFIXES, PERSON_PREFIXES, KEYWORD_PREFIXES, EVENT_PREFIXES, CITATION_PROPS
 from core.graph_builder import triples_to_graph
+
+def _make_prefix_tests(var_name: str, prefixes: list[str]) -> str:
+    """Return OR-ed SPARQL STRSTARTS tests for a variable, e.g. ?type."""
+    if not prefixes:
+        return "false"
+    return " || ".join(
+        [f"STRSTARTS(STR({var_name}), \"{p}\")" for p in prefixes]
+    )
+
+
+def _is_argument_type_iri(type_iri: str | None) -> bool:
+    if not type_iri:
+        return False
+    return any(
+        type_iri.startswith(p)
+        for p in ARGUMENT_PREFIXES
+    )
+
+def _iri_or_tests(var: str, prefixes: List[str]) -> str:
+    if not prefixes:
+        return "false"
+    return " || ".join([f'STRSTARTS(STR({var}), "{p}")' for p in prefixes])
+
 
 def get_work_core_triples(endpoint, work):
     query = build_query(f"""
@@ -81,6 +104,9 @@ def build_work_graph(
 
     return nodes, edges
 
+# ---------------------------
+# all works + basic metadata
+# ---------------------------
 
 def get_all_works(sparql_endpoint: str, limit: int = 500):
     """
@@ -119,51 +145,124 @@ def get_all_works(sparql_endpoint: str, limit: int = 500):
         works.append({"uri": uri, "label": label, "year": year})
     return works
 
-def _make_prefix_tests(var_name: str, prefixes: list[str]) -> str:
-    """Return OR-ed SPARQL STRSTARTS tests for a variable, e.g. ?type."""
-    if not prefixes:
-        return "false"
-    return " || ".join(
-        [f"STRSTARTS(STR({var_name}), \"{p}\")" for p in prefixes]
-    )
+# ---------------------------
+# citations across works
+# ---------------------------
 
-
-def _is_argument_type_iri(type_iri: str | None) -> bool:
-    if not type_iri:
-        return False
-    return any(
-        type_iri.startswith(p)
-        for p in ARGUMENT_PREFIXES
-    )
-
-def get_work_local_graph(sparql_endpoint: str, work_uri: str):
+def get_work_citations(sparql_endpoint: str) -> List[Dict[str, str]]:
     """
-    Get triples around a given work and classify them as 'structure' / 'argument' / 'other'.
-
-    Steps:
-      1. Get all triples where the Work is subject or object (1 hop).
-      2. From those, identify all nodes typed in argument namespaces (amo/idea/semsur).
-      3. For each such argument node, get its own 1-hop neighbors.
-      4. Mark those neighbor triples with layer = "argument".
+    Return citation edges between work nodes.
     """
-    struct_iri_tests = _make_prefix_tests("?type", STRUCTURE_PREFIXES)
-    arg_iri_tests = _make_prefix_tests("?type", ARGUMENT_PREFIXES)
+    prop_filters = " || ".join([f"(?p = <{p}>)" for p in CITATION_PROPS]) or "false"
 
-    # ----------------------------------
-    # 1) First hop around the Work node
-    # ----------------------------------
-    first_query = build_query(f"""
+    q = build_query(f"""
+    SELECT DISTINCT ?citing ?cited
+    WHERE {{
+        ?citing rdf:type ?t1 .
+        ?t1 rdfs:subClassOf* fabio:Work .
+
+        ?cited rdf:type ?t2 .
+        ?t2 rdfs:subClassOf* fabio:Work .
+
+        ?citing ?p ?cited .
+        FILTER({prop_filters})
+    }}
+    """)
+
+    rows = sparql(sparql_endpoint, q)
+    edges = []
+    for r in rows:
+        edges.append({
+            "source": r["citing"]["value"],
+            "target": r["cited"]["value"]
+        })
+    return edges
+
+# ---------------------------
+# sidebar – keyword cloud
+# ---------------------------
+
+def get_top_keywords(sparql_endpoint: str, limit: int = 30):
+    """
+    Top discipline keywords (fabio:hasDiscipline) across works.
+    """
+    q = build_query(f"""
+    SELECT ?kw (COUNT(*) AS ?count)
+    WHERE {{
+        ?work rdf:type ?type .
+        ?type rdfs:subClassOf* fabio:Work .
+
+        ?work fabio:hasDiscipline ?kw .
+    }}
+    GROUP BY ?kw
+    ORDER BY DESC(?count)
+    LIMIT {limit}
+    """)
+
+    rows = sparql(sparql_endpoint, q)
+    return [
+        {"uri": r["kw"]["value"], "count": int(r["count"]["value"])}
+        for r in rows
+    ]
+
+# ---------------------------
+# section hierarchy
+# ---------------------------
+
+def get_section_hierarchy(sparql_endpoint: str, work_uri: str):
+    """
+    For now: one-level hierarchy – work -> sections.
+    Uses po:contains and deo:* section types.
+    """
+    q = build_query(f"""
+    SELECT DISTINCT ?sec ?secType ?secTypeLabel
+    WHERE {{
+        <{work_uri}> po:contains ?sec .
+
+        OPTIONAL {{ ?sec rdf:type ?secType . }}
+        OPTIONAL {{ ?secType rdfs:label ?secTypeLabel }}
+    }}
+    ORDER BY ?sec
+    """)
+
+    rows = sparql(sparql_endpoint, q)
+    sections = []
+    for r in rows:
+        sec = r["sec"]["value"]
+        t = r.get("secType", {}).get("value")
+        label = r.get("secTypeLabel", {}).get("value")
+        sections.append({"uri": sec, "type": t, "type_label": label})
+    return sections
+
+# ---------------------------
+# local graph around a work
+# ---------------------------
+
+def _get_first_hop(sparql_endpoint: str, work_uri: str):
+    """
+    1-hop around work, classify each triple into
+    structure / argument / metadata / other.
+    """
+    struct_tests = _iri_or_tests("?type", STRUCTURE_PREFIXES)
+    arg_tests = _iri_or_tests("?type", ARGUMENT_PREFIXES)
+
+    person_tests = _iri_or_tests("?type", PERSON_PREFIXES)
+    keyword_tests = _iri_or_tests("?type", KEYWORD_PREFIXES)
+    event_tests = _iri_or_tests("?type", EVENT_PREFIXES)
+
+    # metadata: people, events, keywords
+    meta_tests = f"({person_tests}) || ({keyword_tests}) || ({event_tests})"
+
+    q = build_query(f"""
     SELECT ?s ?p ?o ?sType ?oType ?label ?layer
     WHERE {{
         VALUES ?work {{ <{work_uri}> }}
 
-        # edges where work is subject
         {{
             BIND(?work AS ?s)
             ?work ?p ?o .
         }}
         UNION
-        # edges where work is object
         {{
             ?s ?p ?work .
             BIND(?work AS ?o)
@@ -172,51 +271,42 @@ def get_work_local_graph(sparql_endpoint: str, work_uri: str):
         OPTIONAL {{ ?s rdf:type ?sType }}
         OPTIONAL {{ ?o rdf:type ?oType }}
 
-        # human-friendly label / title (for hover & details)
         OPTIONAL {{
-            ?o dc:title|dct:title|rdfs:label|skos:prefLabel|foaf:name|idea:hasLabel ?label .
+            ?o dc:title|dct:title|rdfs:label|skos:prefLabel|
+                foaf:name|idea:hasLabel ?label .
         }}
 
         BIND(COALESCE(?oType, ?sType) AS ?type)
 
         BIND(
-            IF( {arg_iri_tests}, "argument",
-                IF( {struct_iri_tests}, "structure", "other")
+            IF( {arg_tests}, "argument",
+                IF( {struct_tests}, "structure",
+                    IF( {meta_tests}, "metadata", "other")
+                )
             ) AS ?layer
         )
     }}
     """)
-    rows = sparql(sparql_endpoint, first_query)
 
-    # ----------------------------------
-    # 2) Collect argument nodes from first hop
-    # ----------------------------------
-    arg_nodes = set()
-    for r in rows:
-        s = r["s"]["value"]
-        o = r["o"]["value"]
-        s_type = r.get("sType", {}).get("value")
-        o_type = r.get("oType", {}).get("value")
+    return sparql(sparql_endpoint, q)
 
-        if _is_argument_type_iri(s_type) and s != work_uri:
-            arg_nodes.add(s)
-        if _is_argument_type_iri(o_type) and o != work_uri:
-            arg_nodes.add(o)
-
+def get_argument_neighbors(
+    sparql_endpoint: str,
+    arg_nodes: List[str]
+):
+    """
+    1-hop neighbors around a set of argument nodes.
+    Marked as layer = 'argument_neighbor'.
+    """
     if not arg_nodes:
-        # no argument nodes, nothing extra to add
-        return rows
-    
-    # ----------------------------------
-    # 3) Get 1-hop neighbors of all argument nodes in a single query
-    # ----------------------------------
-    arg_values = " ".join(f"<{u}>" for u in arg_nodes)
+        return []
 
-    arg_neighbor_query = build_query(
-        f"""
+    values = " ".join(f"<{a}>" for a in arg_nodes)
+
+    q = build_query(f"""
     SELECT ?s ?p ?o ?sType ?oType ?label ?layer
     WHERE {{
-        VALUES ?arg {{ {arg_values} }}
+        VALUES ?arg {{ {values} }}
 
         {{
             BIND(?arg AS ?s)
@@ -228,118 +318,60 @@ def get_work_local_graph(sparql_endpoint: str, work_uri: str):
             BIND(?arg AS ?o)
         }}
 
+        FILTER(?s != ?arg || ?o != ?arg)
+
         OPTIONAL {{ ?s rdf:type ?sType }}
         OPTIONAL {{ ?o rdf:type ?oType }}
 
         OPTIONAL {{
-            ?o dc:title|dct:title|rdfs:label|skos:prefLabel|foaf:name|
-                idea:hasLabel ?label .
+            ?o dc:title|dct:title|rdfs:label|skos:prefLabel|
+                foaf:name|idea:hasLabel ?label .
         }}
 
-        # everything here belongs to the argument layer
-        BIND("argument" AS ?layer)
+        BIND("argument_neighbor" AS ?layer)
     }}
+    """)
+
+    return sparql(sparql_endpoint, q)
+
+
+def get_work_local_graph(
+    sparql_endpoint: str,
+    work_uri: str,
+    expand_arguments: bool = True
+):
     """
-    )
+    Get triples around a given work and classify them as
+    'structure' / 'argument' / 'metadata' / 'other'
+    plus optional second-hop 'argument_neighbor' nodes.
+    """
+    rows = _get_first_hop(sparql_endpoint, work_uri)
 
-    neighbor_rows = sparql(sparql_endpoint, arg_neighbor_query)
+    if not expand_arguments:
+        return rows
 
-    # ----------------------------------
-    # 4) Merge & deduplicate by (s,p,o)
-    # ----------------------------------
-    all_rows = rows + neighbor_rows
-    seen = set()
-    unique_rows = [] 
-
-    for r in all_rows:
-        s = r["s"]["value"]
-        p = r["p"]["value"]
+    # collect argument nodes
+    arg_nodes = set()
+    for r in rows:
+        layer = r.get("layer", {}).get("value", "")
+        if layer != "argument":
+            continue
         o = r["o"]["value"]
-        key = (s, p, o)
+        arg_nodes.add(o)
+
+    if not arg_nodes:
+        return rows
+
+    second_hop = get_argument_neighbors(sparql_endpoint, list(arg_nodes))
+
+    # simple dedup: (s,p,o) triple
+    seen = set()
+    merged = []
+    for r in rows + second_hop:
+        key = (r["s"]["value"], r["p"]["value"], r["o"]["value"])
         if key in seen:
             continue
         seen.add(key)
-        unique_rows.append(r)
+        merged.append(r)
 
-    return unique_rows
-    # return sparql(sparql_endpoint, query) #execute_query_convert(sparql_endpoint, query)
-
-def get_argument_neighbors(endpoint, nodes):
-    """
-    Given a list of argument nodes (Claim, Evidence, Warrant, etc.),
-    return outgoing and incoming argument triples.
-    """
-    if not nodes:
-        return []
-
-    values = " ".join(f"<{n}>" for n in nodes)
-
-    query = build_query(f"""
-    SELECT ?s ?p ?o ?sType ?oType
-    WHERE {{
-      VALUES ?center {{ {values} }}
-
-      # out edges
-      {{
-        ?center ?p ?o .
-      }}
-      UNION
-      # in edges
-      {{
-        ?s ?p ?center .
-      }}
-
-      OPTIONAL {{ ?s rdf:type ?sType }}
-      OPTIONAL {{ ?o rdf:type ?oType }}
-
-      FILTER(
-           STRSTARTS(STR(?sType), "http://purl.org/spar/amo/")
-        || STRSTARTS(STR(?sType), "http://www.semanticweb.org/idea/")
-        || STRSTARTS(STR(?sType), "http://purl.org/semsur/")
-        || STRSTARTS(STR(?oType), "http://purl.org/spar/amo/")
-        || STRSTARTS(STR(?oType), "http://www.semanticweb.org/idea/")
-        || STRSTARTS(STR(?oType), "http://purl.org/semsur/")
-      )
-    }}
-    """)
-
-    return sparql(endpoint, query) #execute_query_convert(endpoint, query)
-
-
-
-def _get_first_hop(endpoint: str, work_uri: str):
-    """
-    Fetch the direct 1-hop neighborhood around the Work node:
-    - All triples where <work> ?p ?o
-    - All triples where ?s ?p <work>
-    Includes optional types and labels for node classification.
-    """
-
-    query = build_query(f"""
-    SELECT ?s ?p ?o ?sType ?oType ?label
-    WHERE {{
-        VALUES ?work {{ <{work_uri}> }}
-
-        # Outgoing from Work
-        {{
-            BIND(?work AS ?s)
-            ?work ?p ?o .
-        }}
-        UNION
-        # Incoming to Work
-        {{
-            ?s ?p ?work .
-            BIND(?work AS ?o)
-        }}
-
-        OPTIONAL {{ ?s rdf:type ?sType }}
-        OPTIONAL {{ ?o rdf:type ?oType }}
-
-        # Prefer human labels (for hover/info panel)
-        OPTIONAL {{
-            ?o dc:title|dct:title|rdfs:label|skos:prefLabel|foaf:name ?label .
-        }}
-    }}
-    """)
-
-    return sparql(endpoint, query) #execute_query_convert(endpoint, query)
+    return merged

@@ -42,9 +42,36 @@ STRUCTURE_PREFIXES = [
     "http://purl.org/spar/fabio/",
     "http://purl.org/spar/po/",
     "http://purl.org/ontology/bibo/",
+    "http://purl.org/spar/c4o/",
 ]
 ARGUMENT_PREFIXES = [
     "http://purl.org/spar/amo/",
     "http://www.semanticweb.org/idea/",
     "http://purl.org/semsur/",
+]
+
+PERSON_PREFIXES = [
+    "http://xmlns.com/foaf/0.1/",
+    "http://schema.org/",
+    "http://www.semanticweb.org/idea/person/",
+]
+
+KEYWORD_PREFIXES = [
+    "http://cso.kmi.open.ac.uk/schema/cso#",
+    "http://www.semanticweb.org/idea/",
+]
+
+EVENT_PREFIXES = [
+    "http://purl.org/ontology/bibo/",
+    "http://www.semanticweb.org/idea/event/",
+]
+
+SECTION_PREFIXES = [
+    "http://purl.org/spar/deo/",
+]
+
+# citation predicates (extend if you use others)
+CITATION_PROPS = [
+    "http://purl.org/spar/cito/cites",
+    "http://purl.org/ontology/bibo/cites",
 ]
