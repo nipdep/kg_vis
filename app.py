@@ -4,7 +4,6 @@ from config.settings import PAGE_TITLE, PAGE_ICON, IDEA_ENDPOINT
 
 # old features preserved
 from ui.sidebar import sidebar_controls
-from ui.graph_panel import show_graph
 
 # new graph logic
 from ui.work_viewer import (
@@ -15,11 +14,8 @@ from core.work_graph import (
     get_all_works,
     get_work_local_graph
 )
-
+from core.resource_inspector import get_resource_properties
 from core.query_builder import replace_prefixes_if_uri
-from core.sparql_client import execute_query_convert
-from streamlit_agraph import agraph, Config
-
 
 # -----------------------------------------------------------
 # Streamlit setup
@@ -101,28 +97,15 @@ if selected_work:
     work_rows = get_work_local_graph(
         sparql_endpoint,
         selected_work,
-        # expand_arguments=True
     )
 
     # build graph nodes/edges
-    work_nodes, work_edges = build_layered_work_graph(
+    clicked_node = build_layered_work_graph(
         work_rows,
         work_uri=selected_work,
         show_structure=show_structure,
         show_argument=show_argument
     )
-
-    # render
-    cfg = Config(
-        width="100%",
-        height=700,
-        directed=True,
-        interaction={"hover": True},
-        nodes={"font": {"size": 10}},
-        edges={"font": {"size": 8}},
-    )
-
-    clicked_node = agraph(nodes=work_nodes, edges=work_edges, config=cfg)
 
     # -------------------------------------------------------
     # DETAILS
@@ -133,12 +116,7 @@ if selected_work:
 
     st.write(f"**Selected Node:** `{replace_prefixes_if_uri(target_uri)}`")
 
-    details_query = f"""
-    SELECT ?p ?o WHERE {{
-        <{target_uri}> ?p ?o .
-    }}
-    """
-    rows = execute_query_convert(sparql_endpoint, details_query)
+    rows = get_resource_properties(sparql_endpoint, target_uri)
 
     st.dataframe(
         [{"property": replace_prefixes_if_uri(r["p"]["value"]),

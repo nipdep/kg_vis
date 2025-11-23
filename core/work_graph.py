@@ -119,26 +119,40 @@ def get_all_works(sparql_endpoint: str, limit: int = 500):
         works.append({"uri": uri, "label": label, "year": year})
     return works
 
+def _make_prefix_tests(var_name: str, prefixes: list[str]) -> str:
+    """Return OR-ed SPARQL STRSTARTS tests for a variable, e.g. ?type."""
+    if not prefixes:
+        return "false"
+    return " || ".join(
+        [f"STRSTARTS(STR({var_name}), \"{p}\")" for p in prefixes]
+    )
+
+
+def _is_argument_type_iri(type_iri: str | None) -> bool:
+    if not type_iri:
+        return False
+    return any(
+        type_iri.startswith(p)
+        for p in ARGUMENT_PREFIXES
+    )
 
 def get_work_local_graph(sparql_endpoint: str, work_uri: str):
     """
     Get triples around a given work and classify them as 'structure' / 'argument' / 'other'.
+
+    Steps:
+      1. Get all triples where the Work is subject or object (1 hop).
+      2. From those, identify all nodes typed in argument namespaces (amo/idea/semsur).
+      3. For each such argument node, get its own 1-hop neighbors.
+      4. Mark those neighbor triples with layer = "argument".
     """
-    struct_iri_tests = " || ".join(
-        [f"STRSTARTS(STR(?type), \"{p}\")" for p in STRUCTURE_PREFIXES]
-    )
-    arg_iri_tests = " || ".join(
-        [f"STRSTARTS(STR(?type), \"{p}\")" for p in ARGUMENT_PREFIXES]
-    )
+    struct_iri_tests = _make_prefix_tests("?type", STRUCTURE_PREFIXES)
+    arg_iri_tests = _make_prefix_tests("?type", ARGUMENT_PREFIXES)
 
-    query = f"""
-    PREFIX rdf:  <{RDF_TYPE}>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-    PREFIX dc:   <http://purl.org/dc/elements/1.1/>
-    PREFIX dct:  <http://purl.org/dc/terms/>
-    PREFIX foaf: <http://xmlns.com/foaf/0.1/>
-    PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
-
+    # ----------------------------------
+    # 1) First hop around the Work node
+    # ----------------------------------
+    first_query = build_query(f"""
     SELECT ?s ?p ?o ?sType ?oType ?label ?layer
     WHERE {{
         VALUES ?work {{ <{work_uri}> }}
@@ -160,7 +174,7 @@ def get_work_local_graph(sparql_endpoint: str, work_uri: str):
 
         # human-friendly label / title (for hover & details)
         OPTIONAL {{
-            ?o dc:title|dct:title|rdfs:label|skos:prefLabel|foaf:name|<http://www.semanticweb.org/idea/hasLabel> ?label .
+            ?o dc:title|dct:title|rdfs:label|skos:prefLabel|foaf:name|idea:hasLabel ?label .
         }}
 
         BIND(COALESCE(?oType, ?sType) AS ?type)
@@ -171,9 +185,84 @@ def get_work_local_graph(sparql_endpoint: str, work_uri: str):
             ) AS ?layer
         )
     }}
-    """
+    """)
+    rows = sparql(sparql_endpoint, first_query)
 
-    return execute_query_convert(sparql_endpoint, query)
+    # ----------------------------------
+    # 2) Collect argument nodes from first hop
+    # ----------------------------------
+    arg_nodes = set()
+    for r in rows:
+        s = r["s"]["value"]
+        o = r["o"]["value"]
+        s_type = r.get("sType", {}).get("value")
+        o_type = r.get("oType", {}).get("value")
+
+        if _is_argument_type_iri(s_type) and s != work_uri:
+            arg_nodes.add(s)
+        if _is_argument_type_iri(o_type) and o != work_uri:
+            arg_nodes.add(o)
+
+    if not arg_nodes:
+        # no argument nodes, nothing extra to add
+        return rows
+    
+    # ----------------------------------
+    # 3) Get 1-hop neighbors of all argument nodes in a single query
+    # ----------------------------------
+    arg_values = " ".join(f"<{u}>" for u in arg_nodes)
+
+    arg_neighbor_query = build_query(
+        f"""
+    SELECT ?s ?p ?o ?sType ?oType ?label ?layer
+    WHERE {{
+        VALUES ?arg {{ {arg_values} }}
+
+        {{
+            BIND(?arg AS ?s)
+            ?arg ?p ?o .
+        }}
+        UNION
+        {{
+            ?s ?p ?arg .
+            BIND(?arg AS ?o)
+        }}
+
+        OPTIONAL {{ ?s rdf:type ?sType }}
+        OPTIONAL {{ ?o rdf:type ?oType }}
+
+        OPTIONAL {{
+            ?o dc:title|dct:title|rdfs:label|skos:prefLabel|foaf:name|
+                idea:hasLabel ?label .
+        }}
+
+        # everything here belongs to the argument layer
+        BIND("argument" AS ?layer)
+    }}
+    """
+    )
+
+    neighbor_rows = sparql(sparql_endpoint, arg_neighbor_query)
+
+    # ----------------------------------
+    # 4) Merge & deduplicate by (s,p,o)
+    # ----------------------------------
+    all_rows = rows + neighbor_rows
+    seen = set()
+    unique_rows = [] 
+
+    for r in all_rows:
+        s = r["s"]["value"]
+        p = r["p"]["value"]
+        o = r["o"]["value"]
+        key = (s, p, o)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_rows.append(r)
+
+    return unique_rows
+    # return sparql(sparql_endpoint, query) #execute_query_convert(sparql_endpoint, query)
 
 def get_argument_neighbors(endpoint, nodes):
     """
@@ -185,11 +274,7 @@ def get_argument_neighbors(endpoint, nodes):
 
     values = " ".join(f"<{n}>" for n in nodes)
 
-    query = f"""
-    PREFIX amo:  <http://purl.org/spar/amo/>
-    PREFIX idea: <http://www.semanticweb.org/idea/>
-    PREFIX semsur: <http://purl.org/semsur/>
-
+    query = build_query(f"""
     SELECT ?s ?p ?o ?sType ?oType
     WHERE {{
       VALUES ?center {{ {values} }}
@@ -216,9 +301,9 @@ def get_argument_neighbors(endpoint, nodes):
         || STRSTARTS(STR(?oType), "http://purl.org/semsur/")
       )
     }}
-    """
+    """)
 
-    return execute_query_convert(endpoint, query)
+    return sparql(endpoint, query) #execute_query_convert(endpoint, query)
 
 
 
@@ -230,14 +315,7 @@ def _get_first_hop(endpoint: str, work_uri: str):
     Includes optional types and labels for node classification.
     """
 
-    query = f"""
-    PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-    PREFIX dc:   <http://purl.org/dc/elements/1.1/>
-    PREFIX dct:  <http://purl.org/dc/terms/>
-    PREFIX foaf: <http://xmlns.com/foaf/0.1/>
-    PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
-
+    query = build_query(f"""
     SELECT ?s ?p ?o ?sType ?oType ?label
     WHERE {{
         VALUES ?work {{ <{work_uri}> }}
@@ -262,6 +340,6 @@ def _get_first_hop(endpoint: str, work_uri: str):
             ?o dc:title|dct:title|rdfs:label|skos:prefLabel|foaf:name ?label .
         }}
     }}
-    """
+    """)
 
-    return execute_query_convert(endpoint, query)
+    return sparql(endpoint, query) #execute_query_convert(endpoint, query)
