@@ -3,7 +3,7 @@ from typing import List, Dict
 from core.sparql_client import sparql
 from core.query_builder import build_query
 
-from config.settings import ARGUMENT_PREFIXES, STRUCTURE_PREFIXES, PERSON_PREFIXES, KEYWORD_PREFIXES, EVENT_PREFIXES, CITATION_PROPS
+from config.settings import ARGUMENT_PREFIXES, STRUCTURE_PREFIXES, PERSON_PREFIXES, KEYWORD_PREFIXES, EVENT_PREFIXES, CITATION_PROPS, CITO_NS, FABIO_NS
 from core.graph_builder import triples_to_graph
 
 def _make_prefix_tests(var_name: str, prefixes: list[str]) -> str:
@@ -43,6 +43,38 @@ def get_work_core_triples(endpoint, work):
     }}
     """)
     return sparql(endpoint, query)
+
+def get_citation_edges(sparql_endpoint: str, limit: int = 2000):
+    """
+    Return directed citation edges between Works.
+    An edge exists if ?citing ?p ?cited and ?p rdfs:subPropertyOf* cito:cites.
+    Both endpoints must be fabio:Work (or subclass) instances.
+    """
+    query = build_query(f"""
+    SELECT DISTINCT ?citing ?cited ?p
+    WHERE {{
+        ?citing rdf:type ?t1 .
+        ?t1 rdfs:subClassOf* fabio:Work .
+
+        ?cited  rdf:type ?t2 .
+        ?t2 rdfs:subClassOf* fabio:Work .
+
+        ?citing ?p ?cited .
+        ?p rdfs:subPropertyOf* cito:cites .
+    }}
+    LIMIT {limit}
+    """)
+
+    rows = sparql(sparql_endpoint, query)
+
+    edges = []
+    for r in rows:
+        edges.append({
+            "source": r["citing"]["value"],
+            "target": r["cited"]["value"],
+            "predicate": r["p"]["value"],
+        })
+    return edges
 
 def get_work_structural_triples(endpoint, work):
     query = build_query(f"""

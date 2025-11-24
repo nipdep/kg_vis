@@ -6,6 +6,7 @@ from core.query_builder import replace_prefixes_if_uri, is_resource
 from core.graph_builder import get_edge_color
 from config.settings import FABIO_WORK
 from core.work_graph import get_argument_neighbors, _get_first_hop
+from ui.styling import ARGUMENT_TYPE_COLORS, DEFAULT_ARGUMENT_COLOR
 
 def _local_name(uri: str) -> str:
     """
@@ -62,53 +63,59 @@ def _guess_kind(uri: str, type_iri: str | None, layer: str, work_uri: str) -> st
 # overview graph (all works)
 # ---------------------------
 
-def build_work_overview_graph(
-    works: List[Dict],
-    citations: List[Dict] | None = None
-):
+
+def build_work_overview_graph(works, citations=None):
     """
-    Nodes: all works in gray boxes with paper id.
-    Hover: full paper title (and year if available).
-    Edges: citation links if provided.
+    Overview graph:
+      - nodes: all works (gray boxes)
+      - edges: citation relations (directed citing → cited)
+    'citations' is a list of dicts with keys: source, target, predicate
     """
     nodes = []
     edges = []
 
-    works_by_uri = {w["uri"]: w for w in works}
+    work_uris = {w["uri"] for w in works}
 
+    # --- nodes (gray boxes, label = paper id, hover = title) ------------------
     for w in works:
         uri = w["uri"]
-        label = _local_name(uri)
-        title = w["label"]
-        year = w.get("year")
-        if year:
-            title = f"{title} ({year})"
+        label = w["label"]
+        year  = w["year"]
+
+        hover = f"{label} ({year})" if year else label
+        paper_id = _local_name(uri)
 
         nodes.append(
             Node(
                 id=uri,
-                label=label[:30],
-                title=title,
+                label=paper_id[:30],
+                title=hover[:300],      # full title on hover
                 size=18,
                 color="#DDDDDD",
                 shape="box",
-                group="work"
             )
         )
 
+    # --- edges: citations -----------------------------------------------------
     if citations:
         for c in citations:
-            src = c["source"]
-            tgt = c["target"]
-            if src not in works_by_uri or tgt not in works_by_uri:
+            s = c["source"]
+            t = c["target"]
+            p = c["predicate"]
+
+            # keep only if both works are in current filtered set
+            if s not in work_uris or t not in work_uris:
                 continue
+
             edges.append(
                 Edge(
-                    source=src,
-                    target=tgt,
-                    arrows_to=True,
-                    color="#BBBBBB",
-                    type="STRAIGHT"
+                    source=s,
+                    target=t,
+                    label=replace_prefixes_if_uri(p),
+                    color=get_edge_color(p),
+                    arrows_to=True,          # directed citation
+                    type="STRAIGHT",
+                    smooth=False,
                 )
             )
 
@@ -116,14 +123,9 @@ def build_work_overview_graph(
         width="100%",
         height=500,
         directed=True,
-        interaction={"hover": True},
         nodes={"font": {"size": 10}},
         edges={"smooth": False},
-        groups={
-            "work": {
-                "shape": "box",
-            }
-        }
+        interaction={"hover": True},
     )
 
     clicked = agraph(nodes=nodes, edges=edges, config=cfg)
@@ -208,7 +210,7 @@ def build_layered_work_graph(
             shape = "box"
             size = 16
         elif kind == "argument_neighbor":
-            color = "#A4E8A0"
+            color = ARGUMENT_TYPE_COLORS.get(type_iri, DEFAULT_ARGUMENT_COLOR)
             shape = "ellipse"
             size = 12
         else:
@@ -263,6 +265,8 @@ def build_layered_work_graph(
         if not is_resource(o):
             ensure_node(s, type_iri=s_type, label=None, layer=layer)
             continue
+        if p.lower().endswith("rdf-syntax-ns#type") or p.endswith("rdf:type"):
+            continue
 
         ensure_node(s, type_iri=s_type, label=None, layer=layer)
         ensure_node(o, type_iri=o_type, label=label, layer=layer)
@@ -278,6 +282,43 @@ def build_layered_work_graph(
             )
         )
 
+    # ------------------------------------------------------
+    # 1. CLUSTERING: add invisible centroid nodes per group
+    # ------------------------------------------------------
+
+    cluster_centers = {
+        "people": "_cluster_people",
+        "keywords": "_cluster_keywords",
+        "sections": "_cluster_sections",
+        "events": "_cluster_events",
+        "arguments": "_cluster_arguments",
+    }
+
+    # 1) Create invisible cluster center nodes
+    for center_id in cluster_centers.values():
+        nodes[center_id] = Node(
+            id=center_id,
+            hidden=True,
+            physics=False,
+            size=1,
+        )
+
+    # 2) Add invisible edges from cluster centers to nodes of that group
+    for uri, node in list(nodes.items()):
+        grp = getattr(node, "group", None)
+        if grp in cluster_centers:
+            edges.append(
+                Edge(
+                    source=cluster_centers[grp],
+                    target=uri,
+                    hidden=True,
+                    physics=False,
+                )
+            )
+
+    # ------------------------------------------------------
+    # 2. NOW (and only now) create Config
+    # ------------------------------------------------------
     cfg = Config(
         width="100%",
         height=700,
@@ -285,14 +326,19 @@ def build_layered_work_graph(
         interaction={"hover": True},
         nodes={"font": {"size": 10}},
         edges={"font": {"size": 8}},
-        groups={
-            "work": {"shape": "box"},
-            "people": {"shape": "ellipse"},
-            "keywords": {"shape": "ellipse"},
-            "events": {"shape": "ellipse"},
-            "sections": {"shape": "ellipse"},
-            "arguments": {"shape": "box"},
+        physics={
+            "enabled": True,
+            "solver": "forceAtlas2Based",
+            "forceAtlas2Based": {
+                "gravitationalConstant": -80,
+                "centralGravity": 0.005,
+                "springLength": 140,
+                "springConstant": 0.05,
+                "avoidOverlap": 1,
+            },
+            "minVelocity": 0.75,
         },
+        layout={"improvedLayout": True},
     )
 
     clicked = agraph(nodes=list(nodes.values()), edges=edges, config=cfg)

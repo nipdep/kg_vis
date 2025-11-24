@@ -14,9 +14,11 @@ from core.work_graph import (
     get_all_works,
     get_work_local_graph,
     get_top_keywords,
-    get_work_citations,
+    get_citation_edges,
     get_section_hierarchy
 )
+from ui.graph_panel import render_legend
+from ui.styling import legend_styles
 from core.resource_inspector import get_resource_properties
 from core.query_builder import replace_prefixes_if_uri
 
@@ -73,7 +75,7 @@ st.markdown("## All Publications")
 
 # Load all works
 works = get_all_works(sparql_endpoint)
-citations = get_work_citations(sparql_endpoint)
+# citations = get_work_citations(sparql_endpoint)
 
 # Apply search filtering
 def passes_filters(w):
@@ -89,10 +91,10 @@ def passes_filters(w):
     return True
 
 filtered_works = [w for w in works if passes_filters(w)]
-
 st.caption(f"{len(filtered_works)} works found")
 
 # build overview graph
+citations = get_citation_edges(sparql_endpoint)
 clicked_work = build_work_overview_graph(filtered_works, citations=citations)
 
 if clicked_work:
@@ -110,6 +112,7 @@ if selected_work:
     st.markdown(
         f"## Work-centric View for: **`{replace_prefixes_if_uri(selected_work)}`**"
     )
+    render_legend(legend_styles)
 
     # toggles
     col1, col2, col3 = st.columns([1, 1, 1])
@@ -138,25 +141,6 @@ if selected_work:
     # -------------------------------------------------------
     # DETAILS
     # -------------------------------------------------------
-    # -----------------------
-    # Section hierarchy
-    # -----------------------
-    st.markdown("### Section hierarchy")
-
-    try:
-        sections = get_section_hierarchy(sparql_endpoint, selected_work)
-    except Exception:
-        sections = []
-
-    if sections:
-        for s in sections:
-            t_label = (
-                s["type_label"]
-                or replace_prefixes_if_uri(s["type"] or "deo:Section")
-            )
-            st.markdown(f"- **{t_label}**  \n  `{s['uri']}`")
-    else:
-        st.caption("No sections found for this work (or query failed).")
 
     # -----------------------
     # Node details (table)

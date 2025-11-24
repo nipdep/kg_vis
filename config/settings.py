@@ -35,6 +35,7 @@ PREFIXES = {
 FABIO_WORK = "http://purl.org/spar/fabio/Work"
 FABIO_NS   = "http://purl.org/spar/fabio/"
 RDF_TYPE   = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+CITO_NS = "http://purl.org/spar/cito/"
 
 STRUCTURE_PREFIXES = [
     "http://purl.org/spar/deo/",
