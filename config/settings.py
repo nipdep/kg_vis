@@ -6,7 +6,7 @@ PAGE_IMAGE = config("PAGE_IMAGE")
 GITHUB_REPO = config("GITHUB_REPO")
 DESCRIPTION = config("DESCRIPTION")
 
-IDEA_ENDPOINT = "http://localhost:3030/idea_kg/sparql"
+IDEA_ENDPOINT = "http://localhost:3030/idea_kgv2/sparql"
 
 PREFIXES = {
     "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",

@@ -6,17 +6,14 @@ from config.settings import PAGE_TITLE, PAGE_ICON, IDEA_ENDPOINT
 from ui.sidebar import sidebar_controls
 
 # new graph logic
-from ui.work_viewer import (
-    build_work_overview_graph,
-    build_layered_work_graph
-)
+from ui.work_viewer import build_work_overview_graph, build_layered_work_graph
+# from ui.work_viewer_pyviz import build_layered_work_graph
 from core.work_graph import (
     get_all_works,
     get_work_local_graph,
     get_top_keywords,
-    get_citation_edges,
-    get_section_hierarchy
-)
+    get_citation_edges
+    )
 from ui.graph_panel import render_legend
 from ui.styling import legend_styles
 from core.resource_inspector import get_resource_properties
@@ -64,9 +61,16 @@ else:
 # -----------------------------------------------------------
 # SESSION STATE — selected work
 # -----------------------------------------------------------
+
 if "selected_work" not in st.session_state:
     st.session_state["selected_work"] = None
 
+if "expanded_classes" not in st.session_state:
+    st.session_state["expanded_classes"] = {}
+
+# IMPORTANT: must be initialized before first access
+if "last_clicked_node" not in st.session_state:
+    st.session_state["last_clicked_node"] = None
 
 # -----------------------------------------------------------
 # 1. OVERVIEW LIST (filtered by sidebar)
@@ -95,6 +99,7 @@ st.caption(f"{len(filtered_works)} works found")
 
 # build overview graph
 citations = get_citation_edges(sparql_endpoint)
+print("CITATIONS:", len(citations))
 clicked_work = build_work_overview_graph(filtered_works, citations=citations)
 
 if clicked_work:
@@ -112,33 +117,34 @@ if selected_work:
     st.markdown(
         f"## Work-centric View for: **`{replace_prefixes_if_uri(selected_work)}`**"
     )
-    render_legend(legend_styles)
+    # render_legend(legend_styles)
 
     # toggles
-    col1, col2, col3 = st.columns([1, 1, 1])
-    with col1:
-        show_structure = st.toggle("Show Structure", value=True)
-    with col2:
-        show_argument = st.toggle("Show Argument", value=True)
-    with col3:
-        show_metadata = st.toggle("Show Metadata", value=True)
+    # col1, col2, col3 = st.columns([1, 1, 1])
+    # with col1:
+    #     show_structure = st.toggle("Show Structure", value=True)
+    # with col2:
+    #     show_argument = st.toggle("Show Argument", value=True)
+    # with col3:
+    #     show_metadata = st.toggle("Show Metadata", value=True)
 
     # pull graph from SPARQL
-    work_rows = get_work_local_graph(
+    is_skeleton, work_rows = get_work_local_graph(
         sparql_endpoint,
         selected_work,
     )
 
+    # print("Work rows:",work_rows)
     # build graph nodes/edges
+    print("Expanded classes:", st.session_state["expanded_classes"])
     clicked_node = build_layered_work_graph(
-        work_rows,
+        is_skeleton=is_skeleton,
+        rows=work_rows,
         work_uri=selected_work,
-        show_structure=show_structure,
-        show_argument=show_argument,
-        show_metadata=show_metadata
+        expanded_classes=st.session_state["expanded_classes"]
     )
 
-    # -------------------------------------------------------
+     # -------------------------------------------------------
     # DETAILS
     # -------------------------------------------------------
 
@@ -148,11 +154,22 @@ if selected_work:
     st.markdown("---")
     st.markdown("### Node Details")
 
-    target_uri = clicked_node or selected_work
+    # target_uri = clicked_node or selected_work
+    if clicked_node:
+        if clicked_node.startswith("class:"):
+            target_uri = clicked_node.replace("class:", "")
+        else:
+            target_uri = clicked_node
+    elif selected_work:
+        target_uri = selected_work
+    else:
+        target_uri = None
+
+    print("clicked_node:", clicked_node, "target_uri:", target_uri, "selected_work:", selected_work)
     st.write(f"**Selected Node:** `{replace_prefixes_if_uri(target_uri)}`")
 
     rows = get_resource_properties(sparql_endpoint, target_uri)
-
+    # print("Resource properties rows:", rows)
     st.dataframe(
         [{"property": replace_prefixes_if_uri(r["p"]["value"]),
           "value": r["o"]["value"]}
@@ -161,5 +178,16 @@ if selected_work:
         height=350
     )
 
+
+    if clicked_node != st.session_state["last_clicked_node"]:
+        st.session_state["last_clicked_node"] = clicked_node
+
+        if clicked_node and clicked_node.startswith("class:"):
+            class_iri = clicked_node.replace("class:", "")
+            st.session_state["expanded_classes"][class_iri] = (
+                not st.session_state["expanded_classes"].get(class_iri, False)
+            )
+            st.rerun()
+   
 else:
     st.info("Click a paper node above to open the work-centric view.")
